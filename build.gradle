@@ -1,0 +1,53 @@
+apply plugin: 'java'
+
+sourceCompatibility = 1.8
+
+task sourcesJar(type: Jar, dependsOn: ['classes']) {
+    classifier = 'sources'
+    from sourceSets.main.allSource
+}
+
+task javadocJar(type: Jar, dependsOn: ['javadoc']) {
+    classifier = 'javadoc'
+    from javadoc.destinationDir
+}
+
+artifacts {
+    archives sourcesJar
+    archives javadocJar
+}
+
+test {
+    testLogging {
+        events "passed", "skipped", "failed"
+        showStandardStreams = true
+        exceptionFormat = 'full'
+    }
+}
+
+jar {
+    manifest {
+        attributes 'Project-Group': project.group, 'Project-Name': project.name, 'Project-Version': project.version
+    }
+}
+
+repositories {
+    if (System.getenv().GIT_BRANCH == null) {
+        mavenLocal()
+    }
+    mavenCentral()
+}
+
+dependencies {
+
+    testCompile group: "junit",              name: "junit",           version: "4.12"
+    testCompile group: "org.slf4j",          name: "slf4j-api",       version: "1.7.25"
+    testCompile group: "org.testcontainers", name: "testcontainers",  version: "1.10.7"
+    testCompile group: "org.testcontainers", name: "mysql",           version: "1.10.7"
+    testCompile group: "com.zaxxer",         name: "HikariCP",        version: "2.7.8"
+    testCompile group: "javax.persistence",  name: "persistence-api", version: "1.0"
+
+    testRuntime group: "mysql",          name: "mysql-connector-java", version: "6.0.6"
+    testRuntime group: "ch.qos.logback", name: "logback-classic",      version: "1.2.3"
+
+}

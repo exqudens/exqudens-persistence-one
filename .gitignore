@@ -1,0 +1,15 @@
+# Directories
+.gradle/
+.idea/
+.settings/
+build/
+out/
+bin/
+
+# Files
+*.iml
+*.ipr
+*.iws
+.classpath
+.project
+.DS_Store
