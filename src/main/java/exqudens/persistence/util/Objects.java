@@ -31,13 +31,7 @@ public class Objects {
         try {
             List<Object> result = new ArrayList<>();
             List<Integer> ids = new ArrayList<>();
-            Queue<T> queue = new LinkedList<>();
-            for (T object : objects) {
-                Integer id = idFunction.apply(object);
-                if (!ids.contains(id)) {
-                    queue.add(object);
-                }
-            }
+            Queue<T> queue = new LinkedList<>(objects);
             while (!queue.isEmpty()) {
                 T nextObject = queue.remove();
                 List<Object> children;
@@ -63,16 +57,14 @@ public class Objects {
                             T o2 = objectType.cast(entry.getValue());
                             Integer id1 = idFunction.apply(o1);
                             Integer id2 = idFunction.apply(o2);
-                            boolean present = result
+                            boolean anyMatch = result
                                     .stream()
                                     .filter(Entry.class::isInstance)
                                     .map(Entry.class::cast)
                                     .map(e -> new SimpleEntry<>(objectType.cast(e.getKey()), objectType.cast(e.getValue())))
                                     .map(e -> new SimpleEntry<>(idFunction.apply(e.getKey()), idFunction.apply(e.getValue())))
-                                    .filter(e -> (id1.equals(e.getKey()) && id2.equals(e.getValue())) || (id2.equals(e.getKey()) && id1.equals(e.getValue())))
-                                    .findFirst()
-                                    .isPresent();
-                            if (!present) {
+                                    .anyMatch(e -> (id1.equals(e.getKey()) && id2.equals(e.getValue())) || (id2.equals(e.getKey()) && id1.equals(e.getValue())));
+                            if (!anyMatch) {
                                 result.add(o);
                             }
                         } else if (objectType.isInstance(o)) {
@@ -171,7 +163,7 @@ public class Objects {
                     if (!Collection.class.isAssignableFrom(type)) {
                         continue;
                     }
-                    Collection<?> collection = Collection.class.cast(value);
+                    Collection<?> collection = (Collection) value;
                     for (Object o : collection) {
                         if (!Arrays.asList(classes).contains(o.getClass())) {
                             break;
