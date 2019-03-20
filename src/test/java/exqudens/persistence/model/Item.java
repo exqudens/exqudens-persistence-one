@@ -12,7 +12,7 @@ import javax.persistence.OneToMany;
 import javax.persistence.Table;
 import java.util.List;
 
-@WriteOrder(3)
+@WriteOrder(4)
 @Table(name = "item")
 public class Item {
 

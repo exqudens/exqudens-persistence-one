@@ -7,12 +7,13 @@ import javax.persistence.GeneratedValue;
 import javax.persistence.GenerationType;
 import javax.persistence.Id;
 import javax.persistence.JoinColumn;
+import javax.persistence.ManyToMany;
 import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
 import javax.persistence.Table;
 import java.util.List;
 
-@WriteOrder(1)
+@WriteOrder(2)
 @Table(name = "user")
 public class User {
 
@@ -23,6 +24,9 @@ public class User {
 
     @Column(name = "name")
     private String name;
+
+    @ManyToMany
+    private List<Provider> providers;
 
     @ManyToOne
     @JoinColumn(name = "item_id")
@@ -35,9 +39,10 @@ public class User {
     public User() {
     }
 
-    public User(Long id, String name, Item item, List<Order> orders) {
+    public User(Long id, String name, List<Provider> providers, Item item, List<Order> orders) {
         this.id = id;
         this.name = name;
+        this.providers = providers;
         this.item = item;
         this.orders = orders;
     }
@@ -74,6 +79,14 @@ public class User {
         this.orders = orders;
     }
 
+    public List<Provider> getProviders() {
+        return providers;
+    }
+
+    public void setProviders(List<Provider> providers) {
+        this.providers = providers;
+    }
+
     @Override
     public String toString() {
         return "User{" +
@@ -81,4 +94,5 @@ public class User {
                 ", name='" + name + '\'' +
                 '}';
     }
+
 }

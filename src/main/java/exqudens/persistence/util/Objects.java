@@ -6,7 +6,6 @@ import java.util.AbstractMap.SimpleEntry;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -19,28 +18,29 @@ import java.util.stream.Collectors;
 
 public class Objects {
 
-    public static <T> Map<Integer, T> nodeMap(
+    public static <T> List<Object> nodeMap(
             Class<T> objectType,
             List<T> objects,
             Function<Field, Class<?>> fieldClassFunction,
             Function<String, String> getterNameFunction,
             Function<T, Integer> idFunction,
+            Predicate<Field> relationFieldPredicate,
             Predicate<Field> manyToManyFieldPredicate,
             Class<?>... classes
     ) {
         try {
-            Map<Integer, T> result = new LinkedHashMap<>();
+            List<Object> result = new ArrayList<>();
             List<Integer> ids = new ArrayList<>();
             Queue<T> queue = new LinkedList<>();
             for (T object : objects) {
                 Integer id = idFunction.apply(object);
-                result.putIfAbsent(id, object);
-                queue.add(object);
-                ids.add(id);
+                if (!ids.contains(id)) {
+                    queue.add(object);
+                }
             }
             while (!queue.isEmpty()) {
                 T nextObject = queue.remove();
-                Map<Integer, T> children;
+                List<Object> children;
                 do {
                     children = unvisitedNodeMap(
                             objectType,
@@ -49,17 +49,39 @@ public class Objects {
                             fieldClassFunction,
                             getterNameFunction,
                             idFunction,
+                            relationFieldPredicate,
                             manyToManyFieldPredicate,
                             classes
                     );
                     if (children.isEmpty()) {
                         break;
                     }
-                    for (Integer childId : children.keySet()) {
-                        T child = children.get(childId);
-                        ids.add(childId);
-                        result.putIfAbsent(childId, child);
-                        queue.add(child);
+                    for (Object o : children) {
+                        if (o instanceof Entry) {
+                            Entry<?, ?> entry = (Entry) o;
+                            T o1 = objectType.cast(entry.getKey());
+                            T o2 = objectType.cast(entry.getValue());
+                            Integer id1 = idFunction.apply(o1);
+                            Integer id2 = idFunction.apply(o2);
+                            boolean present = result
+                                    .stream()
+                                    .filter(Entry.class::isInstance)
+                                    .map(Entry.class::cast)
+                                    .map(e -> new SimpleEntry<>(objectType.cast(e.getKey()), objectType.cast(e.getValue())))
+                                    .map(e -> new SimpleEntry<>(idFunction.apply(e.getKey()), idFunction.apply(e.getValue())))
+                                    .filter(e -> (id1.equals(e.getKey()) && id2.equals(e.getValue())) || (id2.equals(e.getKey()) && id1.equals(e.getValue())))
+                                    .findFirst()
+                                    .isPresent();
+                            if (!present) {
+                                result.add(o);
+                            }
+                        } else if (objectType.isInstance(o)) {
+                            T child = objectType.cast(o);
+                            result.add(child);
+                            queue.add(child);
+                        } else {
+                            throw new IllegalArgumentException();
+                        }
                     }
                 } while (!children.isEmpty());
             }
@@ -71,21 +93,23 @@ public class Objects {
         }
     }
 
-    private static <T> Map<Integer, T> unvisitedNodeMap(
+    private static <T> List<Object> unvisitedNodeMap(
             Class<T> objectType,
             T object,
             List<Integer> ids,
             Function<Field, Class<?>> fieldClassFunction,
             Function<String, String> getterNameFunction,
             Function<T, Integer> idFunction,
+            Predicate<Field> relationFieldPredicate,
             Predicate<Field> manyToManyFieldPredicate,
             Class<?>... classes
     ) {
         try {
-            Map<Integer, T> result = new LinkedHashMap<>();
+            List<Object> result = new ArrayList<>();
 
             Set<String> fieldNames = Arrays
                     .stream(object.getClass().getDeclaredFields())
+                    .filter(relationFieldPredicate)
                     .filter(f -> Arrays.asList(classes).contains(fieldClassFunction.apply(f)))
                     .map(Field::getName)
                     .collect(Collectors.toSet());
@@ -106,8 +130,9 @@ public class Objects {
                         continue;
                     }
                     Integer id = idFunction.apply(objectType.cast(value));
-                    if (ids == null || !ids.contains(id)) {
-                        result.putIfAbsent(id, objectType.cast(value));
+                    if (!ids.contains(id)) {
+                        result.add(objectType.cast(value));
+                        ids.add(id);
                     }
                 } else {
                     Collection<?> collection = (Collection<?>) value;
@@ -116,8 +141,9 @@ public class Objects {
                             break;
                         }
                         Integer id = idFunction.apply(objectType.cast(o));
-                        if (ids == null || !ids.contains(id)) {
-                            result.putIfAbsent(id, objectType.cast(o));
+                        if (!ids.contains(id)) {
+                            result.add(objectType.cast(o));
+                            ids.add(id);
                         }
                     }
                 }
@@ -151,9 +177,10 @@ public class Objects {
                             break;
                         }
                         Integer id = idFunction.apply(objectType.cast(o));
-                        if (ids == null || !ids.contains(id)) {
-                            result.putIfAbsent(id, objectType.cast(o));
-                            result.putIfAbsent(1, objectType.cast(new SimpleEntry<>(object, o)));
+                        if (!ids.contains(id)) {
+                            result.add(objectType.cast(o));
+                            result.add(new SimpleEntry<>(object, o));
+                            ids.add(id);
                         }
                     }
                 }
