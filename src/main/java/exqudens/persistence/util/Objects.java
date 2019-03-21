@@ -1,5 +1,6 @@
 package exqudens.persistence.util;
 
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.AbstractMap.SimpleEntry;
@@ -15,13 +16,15 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class Objects {
 
-    public static <T> List<Object> nodeMap(
+    public static <T> List<Object> nodes(
             Class<T> objectType,
             List<T> objects,
             Function<Field, Class<?>> fieldClassFunction,
+            Function<Field, String> fieldJoinTableNameFunction,
             Function<String, String> getterNameFunction,
             Function<T, Integer> idFunction,
             Predicate<Field> relationFieldPredicate,
@@ -36,11 +39,12 @@ public class Objects {
                 T nextObject = queue.remove();
                 List<Object> children;
                 do {
-                    children = unvisitedNodeMap(
+                    children = unvisitedNodes(
                             objectType,
                             nextObject,
                             ids,
                             fieldClassFunction,
+                            fieldJoinTableNameFunction,
                             getterNameFunction,
                             idFunction,
                             relationFieldPredicate,
@@ -51,19 +55,18 @@ public class Objects {
                         break;
                     }
                     for (Object o : children) {
-                        if (o instanceof Entry) {
-                            Entry<?, ?> entry = (Entry) o;
-                            T o1 = objectType.cast(entry.getKey());
-                            T o2 = objectType.cast(entry.getValue());
+                        if (o.getClass().isArray()) {
+                            Object[] array = (Object[]) o;
+                            T o1 = objectType.cast(array[0]);
+                            T o2 = objectType.cast(array[1]);
                             Integer id1 = idFunction.apply(o1);
                             Integer id2 = idFunction.apply(o2);
                             boolean anyMatch = result
                                     .stream()
-                                    .filter(Entry.class::isInstance)
-                                    .map(Entry.class::cast)
-                                    .map(e -> new SimpleEntry<>(objectType.cast(e.getKey()), objectType.cast(e.getValue())))
-                                    .map(e -> new SimpleEntry<>(idFunction.apply(e.getKey()), idFunction.apply(e.getValue())))
-                                    .anyMatch(e -> (id1.equals(e.getKey()) && id2.equals(e.getValue())) || (id2.equals(e.getKey()) && id1.equals(e.getValue())));
+                                    .filter(obj -> obj.getClass().isArray())
+                                    .map(obj -> (Object[]) obj)
+                                    .map(arr -> new Object[] { idFunction.apply(objectType.cast(arr[0])), idFunction.apply(objectType.cast(arr[1])), arr[2] })
+                                    .anyMatch(arr -> (id1.equals(arr[0]) && id2.equals(arr[1])) || (id2.equals(arr[0]) && id1.equals(arr[1])));
                             if (!anyMatch) {
                                 result.add(o);
                             }
@@ -85,11 +88,12 @@ public class Objects {
         }
     }
 
-    private static <T> List<Object> unvisitedNodeMap(
+    private static <T> List<Object> unvisitedNodes(
             Class<T> objectType,
             T object,
             List<Integer> ids,
             Function<Field, Class<?>> fieldClassFunction,
+            Function<Field, String> fieldJoinTableNameFunction,
             Function<String, String> getterNameFunction,
             Function<T, Integer> idFunction,
             Predicate<Field> relationFieldPredicate,
@@ -171,7 +175,7 @@ public class Objects {
                         Integer id = idFunction.apply(objectType.cast(o));
                         if (!ids.contains(id)) {
                             result.add(objectType.cast(o));
-                            result.add(new SimpleEntry<>(object, o));
+                            result.add(new Object[] {object, o, fieldJoinTableNameFunction.apply(object.getClass().getDeclaredField(fieldName))});
                             ids.add(id);
                         }
                     }
