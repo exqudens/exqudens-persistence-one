@@ -154,8 +154,8 @@ public class Test1 {
                     fieldJoinTableNameFunction,
                     Functions::getterName,
                     Functions::id,
-                    Predicates.fieldPredicate(OneToMany.class, ManyToOne.class, OneToOne.class),
-                    Predicates.fieldPredicate(ManyToMany.class),
+                    Predicates.fieldPredicate(null, null, Arrays.asList(OneToMany.class, ManyToOne.class, OneToOne.class), null),
+                    Predicates.fieldPredicate(null, null, Arrays.asList(ManyToMany.class), null),
                     classes
             );
 

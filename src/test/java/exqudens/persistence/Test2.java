@@ -10,6 +10,8 @@ import exqudens.persistence.util.Objects;
 import exqudens.persistence.util.Predicates;
 import org.junit.Test;
 
+import javax.persistence.Column;
+import javax.persistence.JoinColumn;
 import javax.persistence.JoinTable;
 import javax.persistence.ManyToMany;
 import javax.persistence.ManyToOne;
@@ -25,6 +27,7 @@ import java.util.Map.Entry;
 import java.util.TreeMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class Test2 {
 
@@ -79,8 +82,12 @@ public class Test2 {
             };
 
             Function<Field, String> fieldJoinTableNameFunction = field -> Arrays.stream(field.getAnnotationsByType(JoinTable.class)).map(JoinTable::name).findFirst().orElse(null);
+            Function<Field, String> columnNameFunction = f -> Stream.of(
+                    Stream.of(f.getAnnotationsByType(Column.class)).findFirst().map(Column::name).orElse(null),
+                    Stream.of(f.getAnnotationsByType(JoinColumn.class)).findFirst().map(JoinColumn::name).orElse(null)
+            ).filter(java.util.Objects::nonNull).findFirst().orElseThrow(() -> new IllegalStateException());
 
-            System.out.println("---");
+                    System.out.println("---");
             List<Object> nodes1 = Objects
                     .nodes(
                             Object.class,
@@ -89,8 +96,8 @@ public class Test2 {
                             fieldJoinTableNameFunction,
                             Functions::getterName,
                             Functions::id,
-                            Predicates.fieldPredicate(OneToMany.class, ManyToOne.class, OneToOne.class),
-                            Predicates.fieldPredicate(ManyToMany.class),
+                            Predicates.fieldPredicate(null, null, Arrays.asList(OneToMany.class, ManyToOne.class, OneToOne.class), null),
+                            Predicates.fieldPredicate(null, null, Arrays.asList(ManyToMany.class), null),
                             classes
                     );
             System.out.println("Expected: " + (providers.size() + users.size() + orders.size() + items.size() + 2) + " Actual: " + nodes1.size());
@@ -107,8 +114,8 @@ public class Test2 {
                             fieldJoinTableNameFunction,
                             Functions::getterName,
                             Functions::id,
-                            Predicates.fieldPredicate(OneToMany.class, ManyToOne.class, OneToOne.class),
-                            Predicates.fieldPredicate(ManyToMany.class),
+                            Predicates.fieldPredicate(null, null, Arrays.asList(OneToMany.class, ManyToOne.class, OneToOne.class), null),
+                            Predicates.fieldPredicate(null, null, Arrays.asList(ManyToMany.class), null),
                             classes
                     );
             System.out.println("Expected: " + (providers.size() + users.size() + orders.size() + items.size() + 2) + " Actual: " + nodes2.size());
@@ -123,8 +130,8 @@ public class Test2 {
                     fieldJoinTableNameFunction,
                     Functions::getterName,
                     Functions::id,
-                    Predicates.fieldPredicate(OneToMany.class, ManyToOne.class, OneToOne.class),
-                    Predicates.fieldPredicate(ManyToMany.class),
+                    Predicates.fieldPredicate(null, null, Arrays.asList(OneToMany.class, ManyToOne.class, OneToOne.class), null),
+                    Predicates.fieldPredicate(null, null, Arrays.asList(ManyToMany.class), null),
                     classes
             );
 
@@ -141,6 +148,18 @@ public class Test2 {
                     }).collect(Collectors.groupingBy(Entry::getKey, TreeMap::new, Collectors.mapping(Entry::getValue, Collectors.toList())));
 
             collect.entrySet().forEach(System.out::println);
+
+            Map<String, Object> row = Objects.row(
+                    users.get(0),
+                    Predicates.fieldPredicate(null, null, Arrays.asList(Column.class, JoinColumn.class), Arrays.asList(OneToMany.class)),
+                    Functions::getterName,
+                    columnNameFunction,
+                    classes
+            );
+
+            System.out.println("---");
+            System.out.println(row);
+            System.out.println("---");
 
         } catch (RuntimeException e) {
             throw e;
