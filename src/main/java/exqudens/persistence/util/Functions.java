@@ -7,6 +7,10 @@ import java.util.Collection;
 
 public class Functions {
 
+    public static String setterName(String s) {
+        return "set" + s.substring(0, 1).toUpperCase() + s.substring(1);
+    }
+
     public static String getterName(String s) {
         return "get" + s.substring(0, 1).toUpperCase() + s.substring(1);
     }

@@ -11,12 +11,14 @@ import exqudens.persistence.util.Predicates;
 import org.junit.Test;
 
 import javax.persistence.Column;
+import javax.persistence.Id;
 import javax.persistence.JoinColumn;
 import javax.persistence.JoinTable;
 import javax.persistence.ManyToMany;
 import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
 import javax.persistence.OneToOne;
+import javax.persistence.Table;
 import java.lang.reflect.Field;
 import java.util.AbstractMap.SimpleEntry;
 import java.util.ArrayList;
@@ -81,11 +83,11 @@ public class Test2 {
                     Item.class
             };
 
+            Function<Class<?>, String> tableNameFunction = c -> Stream.of(c.getAnnotationsByType(Table.class)).map(Table::name).findFirst().orElse(null);
             Function<Field, String> fieldJoinTableNameFunction = field -> Arrays.stream(field.getAnnotationsByType(JoinTable.class)).map(JoinTable::name).findFirst().orElse(null);
-            Function<Field, String> columnNameFunction = f -> Stream.of(
-                    Stream.of(f.getAnnotationsByType(Column.class)).findFirst().map(Column::name).orElse(null),
-                    Stream.of(f.getAnnotationsByType(JoinColumn.class)).findFirst().map(JoinColumn::name).orElse(null)
-            ).filter(java.util.Objects::nonNull).findFirst().orElseThrow(() -> new IllegalStateException());
+            Function<Field, String> columnNameFunction = field -> Arrays.stream(field.getAnnotationsByType(Column.class)).map(Column::name).findFirst().orElse(null);
+            Function<Field, String> joinColumnNameFunction = field -> Arrays.stream(field.getAnnotationsByType(JoinColumn.class)).map(JoinColumn::name).findFirst().orElse(null);
+            Function<Field, String> referencedColumnNameFunction = field -> Arrays.stream(field.getAnnotationsByType(JoinColumn.class)).map(JoinColumn::referencedColumnName).findFirst().orElse(null);
 
                     System.out.println("---");
             List<Object> nodes1 = Objects
@@ -147,19 +149,25 @@ public class Test2 {
                         return entry;
                     }).collect(Collectors.groupingBy(Entry::getKey, TreeMap::new, Collectors.mapping(Entry::getValue, Collectors.toList())));
 
-            collect.entrySet().forEach(System.out::println);
-
-            Map<String, Object> row = Objects.row(
-                    users.get(0),
-                    Predicates.fieldPredicate(null, null, Arrays.asList(Column.class, JoinColumn.class), Arrays.asList(OneToMany.class)),
-                    Functions::getterName,
-                    columnNameFunction,
-                    classes
-            );
-
-            System.out.println("---");
-            System.out.println(row);
-            System.out.println("---");
+            for (Entry<Integer, List<Object>> entry : collect.entrySet()) {
+                System.out.println(entry.getKey());
+                for (Object object : entry.getValue()) {
+                    Map<String, Object> row = Objects.row(
+                            object,
+                            Predicates.fieldPredicate(null, null, Arrays.asList(Column.class, JoinColumn.class), Arrays.asList(OneToMany.class)),
+                            Predicates.fieldPredicate(null, null, Arrays.asList(Id.class), null),
+                            tableNameFunction,
+                            Functions::getterName,
+                            columnNameFunction,
+                            joinColumnNameFunction,
+                            referencedColumnNameFunction,
+                            classes
+                    );
+                    System.out.println("---");
+                    System.out.println(row);
+                    System.out.println("---");
+                }
+            }
 
         } catch (RuntimeException e) {
             throw e;

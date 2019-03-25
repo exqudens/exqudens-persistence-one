@@ -44,6 +44,7 @@ dependencies {
     testCompile group: "org.slf4j",          name: "slf4j-api",       version: "1.7.25"
     testCompile group: "org.testcontainers", name: "testcontainers",  version: "1.10.7"
     testCompile group: "org.testcontainers", name: "mysql",           version: "1.10.7"
+    testCompile group: "org.javatuples",     name: "javatuples",      version: "1.2"
     testCompile group: "com.zaxxer",         name: "HikariCP",        version: "2.7.8"
     testCompile group: "javax.persistence",  name: "persistence-api", version: "1.0"
 

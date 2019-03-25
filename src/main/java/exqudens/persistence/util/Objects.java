@@ -6,7 +6,7 @@ import java.util.AbstractMap.SimpleEntry;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -22,23 +22,69 @@ public class Objects {
     public static Map<String, Object> row(
             Object object,
             Predicate<Field> fieldPredicate,
+            Predicate<Field> idFieldPredicate,
+            Function<Class<?>, String> tableNameFunction,
             Function<String, String> getterNameFunction,
             Function<Field, String> columnNameFunction,
+            Function<Field, String> joinColumnNameFunction,
+            Function<Field, String> referencedColumnNameFunction,
             Class<?>... classes
     ) {
         try {
-            Map<String, Object> row = new HashMap<>();
-            for (Field field : object.getClass().getDeclaredFields()) {
-                if (fieldPredicate.test(field)) {
-                    Method method = object.getClass().getDeclaredMethod(getterNameFunction.apply(field.getName()));
-                    String key = columnNameFunction.apply(field);
-                    Object value = method.invoke(object);
-                    if (value == null) {
-                        continue;
-                    }
-                    if (Arrays.asList(classes).contains(value.getClass())) {
-                        row.putIfAbsent(key, "123abc");
+            Map<String, Object> row = new LinkedHashMap<>();
+            if (object.getClass().isArray()) {
+                Object[] objects = (Object[]) object;
+                for (int i = 0; i < 2; i++) {
+                    List<Field> idFields = Arrays
+                            .stream(objects[i].getClass().getDeclaredFields())
+                            .filter(idFieldPredicate)
+                            .collect(Collectors.toList());
+                    if (idFields.size() == 1) {
+                        String key = tableNameFunction.apply(objects[i].getClass()) + "_" + columnNameFunction.apply(idFields.get(0));
+                        Object value = objects[i].getClass().getDeclaredMethod(getterNameFunction.apply(idFields.get(0).getName())).invoke(objects[i]);
+                        row.putIfAbsent(key, value);
                     } else {
+                        throw new UnsupportedOperationException(objects[0].getClass().getName());
+                    }
+                }
+            } else {
+                for (Field field : object.getClass().getDeclaredFields()) {
+                    if (fieldPredicate.test(field)) {
+                        Method method = object.getClass().getDeclaredMethod(getterNameFunction.apply(field.getName()));
+                        String key;
+                        key = columnNameFunction.apply(field);
+                        if (key == null || key.isEmpty()) {
+                            key = joinColumnNameFunction.apply(field);
+                        }
+                        if (key == null || key.isEmpty()) {
+                            throw new IllegalStateException();
+                        }
+                        Object value = method.invoke(object);
+                        if (value == null) {
+                            continue;
+                        }
+                        if (Arrays.asList(classes).contains(value.getClass())) {
+                            String referencedColumnName = referencedColumnNameFunction.apply(field);
+                            if (referencedColumnName == null || referencedColumnName.isEmpty()) {
+                                List<String> idGetters = Arrays
+                                        .stream(value.getClass().getDeclaredFields())
+                                        .filter(idFieldPredicate)
+                                        .map(Field::getName)
+                                        .map(getterNameFunction)
+                                        .collect(Collectors.toList());
+                                if (idGetters.size() == 1) {
+                                    method = value.getClass().getDeclaredMethod(idGetters.get(0));
+                                    value = method.invoke(value);
+                                    if (value == null) {
+                                        continue;
+                                    }
+                                } else {
+                                    throw new UnsupportedOperationException(value.getClass().getName());
+                                }
+                            } else {
+                                throw new UnsupportedOperationException(value.getClass().getName());
+                            }
+                        }
                         row.putIfAbsent(key, value);
                     }
                 }

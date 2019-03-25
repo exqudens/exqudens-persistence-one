@@ -7,6 +7,7 @@ import exqudens.persistence.model.Item;
 import exqudens.persistence.model.Order;
 import exqudens.persistence.model.Provider;
 import exqudens.persistence.model.User;
+import exqudens.persistence.util.BiFunctions;
 import exqudens.persistence.util.ClassPaths;
 import exqudens.persistence.util.Functions;
 import exqudens.persistence.util.Objects;
@@ -19,14 +20,20 @@ import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.containers.output.Slf4jLogConsumer;
 
+import javax.persistence.Column;
+import javax.persistence.Id;
+import javax.persistence.JoinColumn;
 import javax.persistence.JoinTable;
 import javax.persistence.ManyToMany;
 import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
 import javax.persistence.OneToOne;
+import javax.persistence.Table;
 import java.lang.reflect.Field;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.Statement;
 import java.util.AbstractMap.SimpleEntry;
 import java.util.ArrayList;
@@ -36,12 +43,15 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.TreeMap;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class Test1 {
 
     private static Logger LOGGER;
     private static MySQLContainer MYSQL_CONTAINER;
+    private static String[] TABLE_NAMES;
 
     @BeforeClass
     public static void beforeClass() {
@@ -49,13 +59,14 @@ public class Test1 {
         MYSQL_CONTAINER = new MySQLContainer();
         MYSQL_CONTAINER.start();
         MYSQL_CONTAINER.followOutput(new Slf4jLogConsumer(LOGGER));
-        Arrays.asList(
+        TABLE_NAMES = new String [] {
                 "provider",
                 "user",
                 "order",
                 "item",
                 "provider_user"
-        ).forEach(Test1::createTable);
+        };
+        Arrays.stream(TABLE_NAMES).forEach(Test1::createTable);
     }
 
     @AfterClass
@@ -138,14 +149,19 @@ public class Test1 {
             items.get(1).getUsers().add(users.get(0));
             items.get(2).getUsers().add(users.get(0));
 
-            Function<Field, String> fieldJoinTableNameFunction = field -> Arrays.stream(field.getAnnotationsByType(JoinTable.class)).map(JoinTable::name).findFirst().orElse(null);
-
             Class<?>[] classes = {
                     Provider.class,
                     User.class,
                     Order.class,
                     Item.class
             };
+
+            Predicate<Field> idFieldPredicate = Predicates.fieldPredicate(null, null, Arrays.asList(Id.class), null);
+            Function<Class<?>, String> tableNameFunction = c -> Stream.of(c.getAnnotationsByType(Table.class)).map(Table::name).findFirst().orElse(null);
+            Function<Field, String> fieldJoinTableNameFunction = field -> Arrays.stream(field.getAnnotationsByType(JoinTable.class)).map(JoinTable::name).findFirst().orElse(null);
+            Function<Field, String> columnNameFunction = field -> Arrays.stream(field.getAnnotationsByType(Column.class)).map(Column::name).findFirst().orElse(null);
+            Function<Field, String> joinColumnNameFunction = field -> Arrays.stream(field.getAnnotationsByType(JoinColumn.class)).map(JoinColumn::name).findFirst().orElse(null);
+            Function<Field, String> referencedColumnNameFunction = field -> Arrays.stream(field.getAnnotationsByType(JoinColumn.class)).map(JoinColumn::referencedColumnName).findFirst().orElse(null);
 
             List<Object> nodes = Objects.nodes(
                     Object.class,
@@ -171,14 +187,94 @@ public class Test1 {
                         return entry;
                     }).collect(Collectors.groupingBy(Entry::getKey, TreeMap::new, Collectors.mapping(Entry::getValue, Collectors.toList())));
 
-            collect.entrySet().forEach(System.out::println);
+            try (HikariDataSource dataSource = hikariDataSource()) {
+                try (Connection connection = dataSource.getConnection()) {
+                    for (List<Object> objects : collect.values()) {
+                        if (objects.get(0).getClass().isArray()) {
+                            continue;
+                        }
+
+                        List<Map<String, Object>> rows = new ArrayList<>();
+                        for (Object object : objects) {
+                            Map<String, Object> row = Objects.row(
+                                    object,
+                                    Predicates.fieldPredicate(null, null, Arrays.asList(Column.class, JoinColumn.class), Arrays.asList(OneToMany.class)),
+                                    idFieldPredicate,
+                                    tableNameFunction,
+                                    Functions::getterName,
+                                    columnNameFunction,
+                                    joinColumnNameFunction,
+                                    referencedColumnNameFunction,
+                                    classes
+                            );
+                            rows.add(row);
+                        }
+
+                        String sql = String.join(
+                                "",
+                                "INSERT INTO `",
+                                objects.get(0).getClass().isArray() ? ((Object[]) objects.get(0))[2].toString() : tableNameFunction.apply(objects.get(0).getClass()),
+                                "`(`",
+                                String.join("`, `", rows.get(0).keySet()),
+                                "`) VALUES(",
+                                String.join(", ", rows.get(0).keySet().stream().map(s -> "?").collect(Collectors.toList())),
+                                ")"
+                        );
+
+                        List<Object> ids = new ArrayList<>();
+                        try (PreparedStatement statement = connection.prepareStatement(sql, PreparedStatement.RETURN_GENERATED_KEYS)) {
+                            for (Map<String, Object> row : rows) {
+                                List<Object> args = new ArrayList<>(row.values());
+                                for (int i = 0; i < row.size(); i++) {
+                                    statement.setObject(i + 1, args.get(i));
+                                }
+                                statement.addBatch();
+                            }
+                            statement.executeBatch();
+                            Class<?> type = Arrays
+                                    .stream(objects.get(0).getClass().getDeclaredFields())
+                                    .filter(idFieldPredicate)
+                                    .map(Field::getType)
+                                    .findFirst()
+                                    .orElse(null);
+                            try (ResultSet resultSet = statement.getGeneratedKeys()) {
+                                while (resultSet.next()) {
+                                    ids.add(resultSet.getObject(1, type));
+                                }
+                            }
+                        }
+                        for (int i = 0; i < ids.size(); i++) {
+                            Object node = objects.get(i);
+                            Field field = Arrays
+                                    .stream(node.getClass().getDeclaredFields())
+                                    .filter(idFieldPredicate)
+                                    .findFirst()
+                                    .orElse(null);
+                            String setterName = Functions.setterName(field.getName());
+                            node.getClass().getDeclaredMethod(setterName, field.getType()).invoke(node, ids.get(i));
+                        }
+                    }
+                }
+            }
+
+            nodes.stream().map(o -> o.getClass().isArray() ? Arrays.toString((Object[]) o) : o.toString()).forEach(System.out::println);
 
             try (HikariDataSource dataSource = hikariDataSource()) {
                 try (Connection connection = dataSource.getConnection()) {
-                    try (Statement statement = connection.createStatement()) {
-                        try (ResultSet resultSet = statement.executeQuery("show tables")) {
-                            while (resultSet.next()) {
-                                System.out.println(resultSet.getString(1));
+                    for (String tableName : TABLE_NAMES) {
+                        System.out.println("---");
+                        System.out.println(tableName);
+                        System.out.println("---");
+                        try (Statement statement = connection.createStatement()) {
+                            try (ResultSet resultSet = statement.executeQuery("select * from `" + tableName + "`")) {
+                                ResultSetMetaData metaData = resultSet.getMetaData();
+                                while (resultSet.next()) {
+                                    StringBuilder sb = new StringBuilder();
+                                    for (int i = 1; i <= metaData.getColumnCount(); i++) {
+                                        sb.append(metaData.getColumnName(i) + " = " + resultSet.getObject(i) + " ");
+                                    }
+                                    System.out.println(sb.toString());
+                                }
                             }
                         }
                     }
