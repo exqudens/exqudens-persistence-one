@@ -1,8 +1,7 @@
 package exqudens.persistence.model;
 
-import exqudens.persistence.annotation.WriteOrder;
-
 import javax.persistence.Column;
+import javax.persistence.Entity;
 import javax.persistence.GeneratedValue;
 import javax.persistence.GenerationType;
 import javax.persistence.Id;
@@ -14,7 +13,7 @@ import javax.persistence.OneToMany;
 import javax.persistence.Table;
 import java.util.List;
 
-@WriteOrder(2)
+@Entity(name = "2")
 @Table(name = "user")
 public class User {
 

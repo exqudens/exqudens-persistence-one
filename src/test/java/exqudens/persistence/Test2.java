@@ -1,6 +1,5 @@
 package exqudens.persistence;
 
-import exqudens.persistence.annotation.WriteOrder;
 import exqudens.persistence.model.Item;
 import exqudens.persistence.model.Order;
 import exqudens.persistence.model.Provider;
@@ -11,6 +10,7 @@ import exqudens.persistence.util.Predicates;
 import org.junit.Test;
 
 import javax.persistence.Column;
+import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.JoinColumn;
 import javax.persistence.JoinTable;
@@ -142,7 +142,7 @@ public class Test2 {
                     .map(o -> {
                         Entry<Integer, Object> entry;
                         if (Arrays.asList(classes).contains(o.getClass())) {
-                            entry = new SimpleEntry<>(o.getClass().getAnnotationsByType(WriteOrder.class)[0].value(), o);
+                            entry = new SimpleEntry<>(Integer.valueOf(o.getClass().getAnnotationsByType(Entity.class)[0].name()), o);
                         } else {
                             entry = new SimpleEntry<>(Integer.MAX_VALUE, o);
                         }
