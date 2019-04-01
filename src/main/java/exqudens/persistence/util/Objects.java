@@ -6,6 +6,7 @@ import java.util.AbstractMap.SimpleEntry;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -34,6 +35,7 @@ public class Objects {
             Map<String, Object> row = new LinkedHashMap<>();
             if (object.getClass().isArray()) {
                 Object[] objects = (Object[]) object;
+                Arrays.sort(objects, Comparator.comparing(o -> o.getClass().getName()));
                 for (int i = 0; i < 2; i++) {
                     List<Field> idFields = Arrays
                             .stream(objects[i].getClass().getDeclaredFields())

@@ -8,6 +8,7 @@ import exqudens.persistence.model.Provider;
 import exqudens.persistence.model.User;
 import exqudens.persistence.util.ClassPaths;
 import exqudens.persistence.util.Functions;
+import exqudens.persistence.util.JdbcMethods;
 import exqudens.persistence.util.Objects;
 import exqudens.persistence.util.Predicates;
 import org.junit.AfterClass;
@@ -34,21 +35,18 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.Statement;
-import java.util.AbstractMap.SimpleEntry;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.TreeMap;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-public class Test1 {
+public class TestCreate1 {
 
     private static Logger LOGGER;
     private static MySQLContainer MYSQL_CONTAINER;
@@ -56,7 +54,7 @@ public class Test1 {
 
     @BeforeClass
     public static void beforeClass() {
-        LOGGER = LoggerFactory.getLogger(Test1.class);
+        LOGGER = LoggerFactory.getLogger(TestCreate1.class);
         MYSQL_CONTAINER = new MySQLContainer();
         MYSQL_CONTAINER.start();
         MYSQL_CONTAINER.followOutput(new Slf4jLogConsumer(LOGGER));
@@ -67,7 +65,7 @@ public class Test1 {
                 "item",
                 "provider_user"
         };
-        Arrays.stream(TABLE_NAMES).forEach(Test1::createTable);
+        Arrays.stream(TABLE_NAMES).forEach(TestCreate1::createTable);
     }
 
     @AfterClass
@@ -159,6 +157,10 @@ public class Test1 {
 
             Predicate<Field> idFieldPredicate = Predicates.fieldPredicate(null, null, Arrays.asList(Id.class), null);
 
+            Function<Object, Integer> idFunction = Functions::id;
+            Function<String, String> getterNameFunction = Functions::getterName;
+            Function<String, String> setterNameFunction = Functions::setterName;
+            Function<Field, Class<?>> fieldClassFunction = Functions::fieldClass;
             Function<Class<?>, String> tableNameFunction = c -> Stream.of(c.getAnnotationsByType(Table.class)).map(Table::name).findFirst().orElse(null);
             Function<Field, String> fieldJoinTableNameFunction = field -> Arrays.stream(field.getAnnotationsByType(JoinTable.class)).map(JoinTable::name).findFirst().orElse(null);
             Function<Field, String> columnNameFunction = field -> Arrays.stream(field.getAnnotationsByType(Column.class)).map(Column::name).findFirst().orElse(null);
@@ -171,7 +173,7 @@ public class Test1 {
                         Predicates.fieldPredicate(null, null, Arrays.asList(Column.class, JoinColumn.class), Arrays.asList(OneToMany.class)),
                         idFieldPredicate,
                         tableNameFunction,
-                        Functions::getterName,
+                        getterNameFunction,
                         columnNameFunction,
                         joinColumnNameFunction,
                         referencedColumnNameFunction,
@@ -191,10 +193,10 @@ public class Test1 {
             Objects.nodes(
                     Object.class,
                     providers.stream().map(Object.class::cast).collect(Collectors.toList()),
-                    Functions::fieldClass,
+                    fieldClassFunction,
                     fieldJoinTableNameFunction,
-                    Functions::getterName,
-                    Functions::id,
+                    getterNameFunction,
+                    idFunction,
                     Predicates.fieldPredicate(null, null, Arrays.asList(OneToMany.class, ManyToOne.class, OneToOne.class), null),
                     Predicates.fieldPredicate(null, null, Arrays.asList(ManyToMany.class), null),
                     classes
@@ -236,16 +238,7 @@ public class Test1 {
                                     ")"
                             );
 
-                            try (PreparedStatement statement = connection.prepareStatement(sql)) {
-                                for (Map<String, Object> row : rows) {
-                                    List<Object> args = new ArrayList<>(row.values());
-                                    for (int i = 0; i < row.size(); i++) {
-                                        statement.setObject(i + 1, args.get(i));
-                                    }
-                                    statement.addBatch();
-                                }
-                                statement.executeBatch();
-                            }
+                            JdbcMethods.insert(connection, sql, rows.stream().map(m -> new ArrayList<>(m.values())).collect(Collectors.toList()));
 
                         } else {
 
@@ -262,28 +255,12 @@ public class Test1 {
                                     ")"
                             );
 
-                            List<Object> ids = new ArrayList<>();
-                            try (PreparedStatement statement = connection.prepareStatement(sql, PreparedStatement.RETURN_GENERATED_KEYS)) {
-                                for (Map<String, Object> row : rows) {
-                                    List<Object> args = new ArrayList<>(row.values());
-                                    for (int i = 0; i < row.size(); i++) {
-                                        statement.setObject(i + 1, args.get(i));
-                                    }
-                                    statement.addBatch();
-                                }
-                                statement.executeBatch();
-                                Class<?> type = Arrays
-                                        .stream(objects.get(0).getClass().getDeclaredFields())
-                                        .filter(idFieldPredicate)
-                                        .map(Field::getType)
-                                        .findFirst()
-                                        .orElse(null);
-                                try (ResultSet resultSet = statement.getGeneratedKeys()) {
-                                    while (resultSet.next()) {
-                                        ids.add(resultSet.getObject(1, type));
-                                    }
-                                }
-                            }
+                            List<Field> idFields = Arrays
+                                    .stream(objects.get(0).getClass().getDeclaredFields())
+                                    .filter(idFieldPredicate)
+                                    .collect(Collectors.toList());
+                            Class<?> idType = fieldClassFunction.apply(idFields.get(0));
+                            List<?> ids = JdbcMethods.insert(connection, sql, rows.stream().map(m -> new ArrayList<>(m.values())).collect(Collectors.toList()), idType);
 
                             for (int i = 0; i < ids.size(); i++) {
                                 Object node = objects.get(i);
@@ -292,7 +269,7 @@ public class Test1 {
                                         .filter(idFieldPredicate)
                                         .findFirst()
                                         .orElse(null);
-                                String setterName = Functions.setterName(field.getName());
+                                String setterName = setterNameFunction.apply(field.getName());
                                 node.getClass().getDeclaredMethod(setterName, field.getType()).invoke(node, ids.get(i));
                             }
 

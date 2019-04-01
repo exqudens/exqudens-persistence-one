@@ -1,38 +1,123 @@
 package exqudens.persistence;
 
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 import exqudens.persistence.model.Item;
 import exqudens.persistence.model.Order;
 import exqudens.persistence.model.Provider;
 import exqudens.persistence.model.User;
+import exqudens.persistence.util.ClassPaths;
 import exqudens.persistence.util.Functions;
 import exqudens.persistence.util.Objects;
 import exqudens.persistence.util.Predicates;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.containers.output.Slf4jLogConsumer;
 
 import javax.persistence.Column;
-import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.JoinColumn;
 import javax.persistence.JoinTable;
-import javax.persistence.ManyToMany;
-import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
-import javax.persistence.OneToOne;
 import javax.persistence.Table;
 import java.lang.reflect.Field;
-import java.util.AbstractMap.SimpleEntry;
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
-import java.util.TreeMap;
 import java.util.function.Function;
 import java.util.function.Predicate;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-public class Test2 {
+public class TestRead1 {
+
+    private static Logger LOGGER;
+    private static MySQLContainer MYSQL_CONTAINER;
+    private static String[] TABLE_NAMES;
+
+    @BeforeClass
+    public static void beforeClass() {
+        LOGGER = LoggerFactory.getLogger(TestRead1.class);
+        MYSQL_CONTAINER = new MySQLContainer();
+        MYSQL_CONTAINER.start();
+        MYSQL_CONTAINER.followOutput(new Slf4jLogConsumer(LOGGER));
+        TABLE_NAMES = new String [] {
+                "provider",
+                "user",
+                "order",
+                "item",
+                "provider_user"
+        };
+        Arrays.stream(TABLE_NAMES).forEach(TestRead1::createTable);
+        insert("all");
+    }
+
+    @AfterClass
+    public static void afterClass() {
+        MYSQL_CONTAINER.stop();
+    }
+
+    private static void createTable(String name) {
+        try {
+            String prefix = "create-table-";
+            String suffix = ".sql";
+            String sql = ClassPaths.toString(prefix + name + suffix);
+            try (HikariDataSource dataSource = hikariDataSource()) {
+                try (Connection connection = dataSource.getConnection()) {
+                    try (Statement statement = connection.createStatement()) {
+                        statement.execute(sql);
+                    }
+                }
+            }
+        } catch (RuntimeException e) {
+            e.printStackTrace();
+            throw e;
+        } catch (Throwable t) {
+            t.printStackTrace();
+            throw new RuntimeException(t);
+        }
+    }
+
+    private static void insert(String name) {
+        try {
+            String prefix = "insert-";
+            String suffix = ".sql";
+            String sql = ClassPaths.toString(prefix + name + suffix);
+            try (HikariDataSource dataSource = hikariDataSource()) {
+                try (Connection connection = dataSource.getConnection()) {
+                    try (Statement statement = connection.createStatement()) {
+                        statement.execute(sql);
+                    }
+                }
+            }
+        } catch (RuntimeException e) {
+            e.printStackTrace();
+            throw e;
+        } catch (Throwable t) {
+            t.printStackTrace();
+            throw new RuntimeException(t);
+        }
+    }
+
+    private static HikariDataSource hikariDataSource() {
+        HikariConfig config = new HikariConfig();
+        config.setJdbcUrl(MYSQL_CONTAINER.getJdbcUrl() + "?allowMultiQueries=true&rewriteBatchedStatements=true&serverTimezone=UTC&zeroDateTimeBehavior=convertToNull&characterEncoding=UTF-8&characterSetResults=UTF-8&logger=com.mysql.cj.core.log.Slf4JLogger&profileSQL=true");
+        config.setUsername(MYSQL_CONTAINER.getUsername());
+        config.setPassword(MYSQL_CONTAINER.getPassword());
+        config.setConnectionTimeout(40000L);
+        config.setMaximumPoolSize(1);
+        HikariDataSource dataSource = new HikariDataSource(config);
+        return dataSource;
+    }
 
     @Test
     public void test1() {
@@ -111,9 +196,33 @@ public class Test2 {
                 return row;
             };
 
+            try (HikariDataSource dataSource = hikariDataSource()) {
+                try (Connection connection = dataSource.getConnection()) {
+                    for (String tableName : TABLE_NAMES) {
+                        System.out.println("---");
+                        System.out.println(tableName);
+                        System.out.println("---");
+                        try (Statement statement = connection.createStatement()) {
+                            try (ResultSet resultSet = statement.executeQuery("select * from `" + tableName + "`")) {
+                                ResultSetMetaData metaData = resultSet.getMetaData();
+                                while (resultSet.next()) {
+                                    Map<String, Object> row = new LinkedHashMap<>();
+                                    for (int i = 1; i <= metaData.getColumnCount(); i++) {
+                                        row.put(metaData.getColumnName(i), resultSet.getObject(i));
+                                    }
+                                    System.out.println(row);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
         } catch (RuntimeException e) {
+            e.printStackTrace();
             throw e;
         } catch (Throwable t) {
+            t.printStackTrace();
             throw new RuntimeException(t);
         }
     }
